@@ -1,0 +1,161 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+
+entity input_module is
+    port (
+        clk                : in  std_logic;
+        reset              : in  std_logic;
+
+        btn_normal_n       : in  std_logic;
+        btn_priority_n     : in  std_logic;
+        btn_skip1_n        : in  std_logic;
+        btn_skip2_n        : in  std_logic;
+        btn_skip3_n        : in  std_logic;
+
+        sw_counter1        : in  std_logic;
+        sw_counter2        : in  std_logic;
+        sw_counter3        : in  std_logic;
+
+        normal_req_pulse   : out std_logic;
+        priority_req_pulse : out std_logic;
+        skip1_pulse        : out std_logic;
+        skip2_pulse        : out std_logic;
+        skip3_pulse        : out std_logic;
+
+        counter1_active    : out std_logic;
+        counter2_active    : out std_logic;
+        counter3_active    : out std_logic
+    );
+end input_module;
+
+architecture Structural of input_module is
+
+    component debounce
+        generic (
+            COUNT_MAX : integer := 500000
+        );
+        port (
+            clk       : in  std_logic;
+            reset     : in  std_logic;
+            noisy_in  : in  std_logic;
+            clean_out : out std_logic
+        );
+    end component;
+
+    component one_pulse
+        port (
+            clk       : in  std_logic;
+            reset     : in  std_logic;
+            signal_in : in  std_logic;
+            pulse_out : out std_logic
+        );
+    end component;
+
+    signal btn_normal      : std_logic;
+    signal btn_priority    : std_logic;
+    signal btn_skip1       : std_logic;
+    signal btn_skip2       : std_logic;
+    signal btn_skip3       : std_logic;
+
+    signal normal_clean    : std_logic;
+    signal priority_clean  : std_logic;
+    signal skip1_clean     : std_logic;
+    signal skip2_clean     : std_logic;
+    signal skip3_clean     : std_logic;
+
+begin
+
+    -- ปุ่ม active low -> แปลงเป็น active high ภายใน
+    btn_normal   <= not btn_normal_n;
+    btn_priority <= not btn_priority_n;
+    btn_skip1    <= not btn_skip1_n;
+    btn_skip2    <= not btn_skip2_n;
+    btn_skip3    <= not btn_skip3_n;
+
+    -- Debounce
+    db_normal: debounce
+        port map (
+            clk       => clk,
+            reset     => reset,
+            noisy_in  => btn_normal,
+            clean_out => normal_clean
+        );
+
+    db_priority: debounce
+        port map (
+            clk       => clk,
+            reset     => reset,
+            noisy_in  => btn_priority,
+            clean_out => priority_clean
+        );
+
+    db_skip1: debounce
+        port map (
+            clk       => clk,
+            reset     => reset,
+            noisy_in  => btn_skip1,
+            clean_out => skip1_clean
+        );
+
+    db_skip2: debounce
+        port map (
+            clk       => clk,
+            reset     => reset,
+            noisy_in  => btn_skip2,
+            clean_out => skip2_clean
+        );
+
+    db_skip3: debounce
+        port map (
+            clk       => clk,
+            reset     => reset,
+            noisy_in  => btn_skip3,
+            clean_out => skip3_clean
+        );
+
+    -- One pulse
+    op_normal: one_pulse
+        port map (
+            clk       => clk,
+            reset     => reset,
+            signal_in => normal_clean,
+            pulse_out => normal_req_pulse
+        );
+
+    op_priority: one_pulse
+        port map (
+            clk       => clk,
+            reset     => reset,
+            signal_in => priority_clean,
+            pulse_out => priority_req_pulse
+        );
+
+    op_skip1: one_pulse
+        port map (
+            clk       => clk,
+            reset     => reset,
+            signal_in => skip1_clean,
+            pulse_out => skip1_pulse
+        );
+
+    op_skip2: one_pulse
+        port map (
+            clk       => clk,
+            reset     => reset,
+            signal_in => skip2_clean,
+            pulse_out => skip2_pulse
+        );
+
+    op_skip3: one_pulse
+        port map (
+            clk       => clk,
+            reset     => reset,
+            signal_in => skip3_clean,
+            pulse_out => skip3_pulse
+        );
+
+    counter1_active <= sw_counter1;
+    counter2_active <= sw_counter2;
+    counter3_active <= sw_counter3;
+
+end Structural;
