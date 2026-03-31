@@ -1,0 +1,54 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity debounce is
+    generic (
+        COUNT_MAX : integer := 500000   -- 10 ms @ 50 MHz
+    );
+    port (
+        clk       : in  std_logic;
+        reset     : in  std_logic;
+        noisy_in  : in  std_logic;
+        clean_out : out std_logic
+    );
+end debounce;
+
+architecture Behavioral of debounce is
+    signal sync_0     : std_logic := '0';
+    signal sync_1     : std_logic := '0';
+    signal stable_reg : std_logic := '0';
+    signal counter    : integer range 0 to COUNT_MAX := 0;
+begin
+
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                sync_0     <= '0';
+                sync_1     <= '0';
+                stable_reg <= '0';
+                counter    <= 0;
+            else
+                -- Synchronizer 2 ชั้น
+                sync_0 <= noisy_in;
+                sync_1 <= sync_0;
+
+                if sync_1 = stable_reg then
+                    counter <= 0;
+                else
+                    if counter = COUNT_MAX then
+                        stable_reg <= sync_1;
+                        counter <= 0;
+                    else
+                        counter <= counter + 1;
+                    end if;
+                end if;
+            end if;
+        end if;
+    end process;
+
+    clean_out <= stable_reg;
+
+end Behavioral;
+
