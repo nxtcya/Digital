@@ -1,0 +1,152 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity queue_management is
+    generic (
+        FIFO_DEPTH : integer := 16
+    );
+    Port (
+        clk             : in  std_logic;
+        reset           : in  std_logic;
+
+        normal_pulse    : in  std_logic;
+        priority_pulse  : in  std_logic;
+
+        deq_normal      : in  std_logic;
+        deq_priority    : in  std_logic;
+
+        normal_front    : out std_logic_vector(10 downto 0);
+        priority_front  : out std_logic_vector(10 downto 0);
+
+        normal_empty    : out std_logic;
+        priority_empty  : out std_logic;
+
+        normal_full     : out std_logic;
+        priority_full   : out std_logic;
+
+        normal_count    : out integer range 0 to FIFO_DEPTH;
+        priority_count  : out integer range 0 to FIFO_DEPTH;
+        total_count     : out integer range 0 to (2*FIFO_DEPTH)
+    );
+end queue_management;
+
+architecture Behavioral of queue_management is
+
+    component simple_fifo
+        generic (
+            DATA_WIDTH : integer := 11;
+            DEPTH      : integer := 16
+        );
+        Port (
+            clk       : in  std_logic;
+            reset     : in  std_logic;
+            wr_en     : in  std_logic;
+            rd_en     : in  std_logic;
+            din       : in  std_logic_vector(DATA_WIDTH-1 downto 0);
+            dout      : out std_logic_vector(DATA_WIDTH-1 downto 0);
+            empty     : out std_logic;
+            full      : out std_logic;
+            count     : out integer range 0 to DEPTH
+        );
+    end component;
+
+    signal normal_ticket_num   : integer range 0 to 999 := 0;
+    signal priority_ticket_num : integer range 0 to 999 := 0;
+
+    signal normal_din          : std_logic_vector(10 downto 0);
+    signal priority_din        : std_logic_vector(10 downto 0);
+
+    signal normal_wr_en        : std_logic;
+    signal priority_wr_en      : std_logic;
+
+    signal normal_count_i      : integer range 0 to FIFO_DEPTH;
+    signal priority_count_i    : integer range 0 to FIFO_DEPTH;
+
+    signal normal_full_i       : std_logic;
+    signal priority_full_i     : std_logic;
+
+begin
+
+ 
+    normal_wr_en   <= normal_pulse   and (not normal_full_i);
+    priority_wr_en <= priority_pulse and (not priority_full_i);
+
+
+    normal_din   <= '0' & std_logic_vector(to_unsigned(normal_ticket_num, 10));
+    priority_din <= '1' & std_logic_vector(to_unsigned(priority_ticket_num, 10));
+
+ 
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                normal_ticket_num   <= 0;
+                priority_ticket_num <= 0;
+            else
+                if normal_wr_en = '1' then
+                    if normal_ticket_num = 999 then
+                        normal_ticket_num <= 0;
+                    else
+                        normal_ticket_num <= normal_ticket_num + 1;
+                    end if;
+                end if;
+
+                if priority_wr_en = '1' then
+                    if priority_ticket_num = 999 then
+                        priority_ticket_num <= 0;
+                    else
+                        priority_ticket_num <= priority_ticket_num + 1;
+                    end if;
+                end if;
+            end if;
+        end if;
+    end process;
+
+   
+    -- Normal FIFO
+  
+    U_FIFO_NORMAL : simple_fifo
+        generic map (
+            DATA_WIDTH => 11,
+            DEPTH      => FIFO_DEPTH
+        )
+        port map (
+            clk   => clk,
+            reset => reset,
+            wr_en => normal_wr_en,
+            rd_en => deq_normal,
+            din   => normal_din,
+            dout  => normal_front,
+            empty => normal_empty,
+            full  => normal_full_i,
+            count => normal_count_i
+        );
+
+    -- Priority FIFO
+    
+    U_FIFO_PRIORITY : simple_fifo
+        generic map (
+            DATA_WIDTH => 11,
+            DEPTH      => FIFO_DEPTH
+        )
+        port map (
+            clk   => clk,
+            reset => reset,
+            wr_en => priority_wr_en,
+            rd_en => deq_priority,
+            din   => priority_din,
+            dout  => priority_front,
+            empty => priority_empty,
+            full  => priority_full_i,
+            count => priority_count_i
+        );
+
+    normal_count   <= normal_count_i;
+    priority_count <= priority_count_i;
+    total_count    <= normal_count_i + priority_count_i;
+
+    normal_full    <= normal_full_i;
+    priority_full  <= priority_full_i;
+
+end Behavioral;
