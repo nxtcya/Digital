@@ -2,158 +2,186 @@ library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 
 entity input_module is
-    port (
-        clk                : in  std_logic;
-        reset              : in  std_logic;
+    generic (
+        CLK_FREQ_HZ : integer := 50000000;
+        DEBOUNCE_MS : integer := 20
+    );
+    Port (
+        clk            : in  std_logic;
+        reset          : in  std_logic;
 
-        btn_normal_n       : in  std_logic;
-        btn_priority_n     : in  std_logic;
-        btn_skip1_n        : in  std_logic;
-        btn_skip2_n        : in  std_logic;
-        btn_skip3_n        : in  std_logic;
+        btn_normal     : in  std_logic;
+        btn_priority   : in  std_logic;
+        btn_reset      : in  std_logic;
+        btn_skip1      : in  std_logic;
+        btn_skip2      : in  std_logic;
+        btn_skip3      : in  std_logic;
 
-        sw_counter1        : in  std_logic;
-        sw_counter2        : in  std_logic;
-        sw_counter3        : in  std_logic;
+        sw_open        : in  std_logic_vector(2 downto 0);
+        sw_service     : in  std_logic_vector(2 downto 0);
 
-        normal_req_pulse   : out std_logic;
-        priority_req_pulse : out std_logic;
-        skip1_pulse        : out std_logic;
-        skip2_pulse        : out std_logic;
-        skip3_pulse        : out std_logic;
+        normal_pulse   : out std_logic;
+        priority_pulse : out std_logic;
+        reset_pulse    : out std_logic;
+        skip_pulse     : out std_logic_vector(2 downto 0);
 
-        counter1_active    : out std_logic;
-        counter2_active    : out std_logic;
-        counter3_active    : out std_logic
+        open_sw_clean  : out std_logic_vector(2 downto 0);
+        service_clean  : out std_logic_vector(2 downto 0)
     );
 end input_module;
 
-architecture Structural of input_module is
+architecture Behavioral of input_module is
+
+    component sync_2ff
+        Port (
+            clk       : in  std_logic;
+            reset     : in  std_logic;
+            din_async : in  std_logic;
+            dout_sync : out std_logic
+        );
+    end component;
 
     component debounce
         generic (
-            COUNT_MAX : integer := 500000
+            CLK_FREQ_HZ : integer := 50000000;
+            DEBOUNCE_MS : integer := 20
         );
-        port (
-            clk       : in  std_logic;
-            reset     : in  std_logic;
-            noisy_in  : in  std_logic;
-            clean_out : out std_logic
-        );
-    end component;
-
-    component one_pulse
-        port (
-            clk       : in  std_logic;
-            reset     : in  std_logic;
-            signal_in : in  std_logic;
-            pulse_out : out std_logic
+        Port (
+            clk        : in  std_logic;
+            reset      : in  std_logic;
+            din        : in  std_logic;
+            dout_clean : out std_logic
         );
     end component;
 
-    signal btn_normal      : std_logic;
-    signal btn_priority    : std_logic;
-    signal btn_skip1       : std_logic;
-    signal btn_skip2       : std_logic;
-    signal btn_skip3       : std_logic;
+    -- synchronized button signals
+    signal btn_normal_sync    : std_logic;
+    signal btn_priority_sync  : std_logic;
+    signal btn_reset_sync     : std_logic;
+    signal btn_skip1_sync     : std_logic;
+    signal btn_skip2_sync     : std_logic;
+    signal btn_skip3_sync     : std_logic;
 
-    signal normal_clean    : std_logic;
-    signal priority_clean  : std_logic;
-    signal skip1_clean     : std_logic;
-    signal skip2_clean     : std_logic;
-    signal skip3_clean     : std_logic;
+    -- debounced button signals
+    signal btn_normal_clean   : std_logic;
+    signal btn_priority_clean : std_logic;
+    signal btn_reset_clean    : std_logic;
+    signal btn_skip1_clean    : std_logic;
+    signal btn_skip2_clean    : std_logic;
+    signal btn_skip3_clean    : std_logic;
+
+    -- delayed signals for edge detect
+    signal btn_normal_d       : std_logic := '0';
+    signal btn_priority_d     : std_logic := '0';
+    signal btn_reset_d        : std_logic := '0';
+    signal btn_skip1_d        : std_logic := '0';
+    signal btn_skip2_d        : std_logic := '0';
+    signal btn_skip3_d        : std_logic := '0';
+
+    -- synchronized switch signals
+    signal sw_open_sync       : std_logic_vector(2 downto 0);
+    signal sw_service_sync    : std_logic_vector(2 downto 0);
 
 begin
 
-    -- ปุ่ม active low -> แปลงเป็น active high ภายใน
-    btn_normal   <= not btn_normal_n;
-    btn_priority <= not btn_priority_n;
-    btn_skip1    <= not btn_skip1_n;
-    btn_skip2    <= not btn_skip2_n;
-    btn_skip3    <= not btn_skip3_n;
 
-    -- Debounce
-    db_normal: debounce
-        port map (
-            clk       => clk,
-            reset     => reset,
-            noisy_in  => btn_normal,
-            clean_out => normal_clean
-        );
+    U_SYNC_BTN_NORMAL: sync_2ff
+        port map(clk, reset, btn_normal, btn_normal_sync);
 
-    db_priority: debounce
-        port map (
-            clk       => clk,
-            reset     => reset,
-            noisy_in  => btn_priority,
-            clean_out => priority_clean
-        );
+    U_SYNC_BTN_PRIORITY: sync_2ff
+        port map(clk, reset, btn_priority, btn_priority_sync);
 
-    db_skip1: debounce
-        port map (
-            clk       => clk,
-            reset     => reset,
-            noisy_in  => btn_skip1,
-            clean_out => skip1_clean
-        );
+    U_SYNC_BTN_RESET: sync_2ff
+        port map(clk, reset, btn_reset, btn_reset_sync);
 
-    db_skip2: debounce
-        port map (
-            clk       => clk,
-            reset     => reset,
-            noisy_in  => btn_skip2,
-            clean_out => skip2_clean
-        );
+    U_SYNC_BTN_SKIP1: sync_2ff
+        port map(clk, reset, btn_skip1, btn_skip1_sync);
 
-    db_skip3: debounce
-        port map (
-            clk       => clk,
-            reset     => reset,
-            noisy_in  => btn_skip3,
-            clean_out => skip3_clean
-        );
+    U_SYNC_BTN_SKIP2: sync_2ff
+        port map(clk, reset, btn_skip2, btn_skip2_sync);
 
-    -- One pulse
-    op_normal: one_pulse
-        port map (
-            clk       => clk,
-            reset     => reset,
-            signal_in => normal_clean,
-            pulse_out => normal_req_pulse
-        );
+    U_SYNC_BTN_SKIP3: sync_2ff
+        port map(clk, reset, btn_skip3, btn_skip3_sync);
 
-    op_priority: one_pulse
-        port map (
-            clk       => clk,
-            reset     => reset,
-            signal_in => priority_clean,
-            pulse_out => priority_req_pulse
-        );
 
-    op_skip1: one_pulse
-        port map (
-            clk       => clk,
-            reset     => reset,
-            signal_in => skip1_clean,
-            pulse_out => skip1_pulse
-        );
+    U_SYNC_SW_OPEN0: sync_2ff
+        port map(clk, reset, sw_open(0), sw_open_sync(0));
 
-    op_skip2: one_pulse
-        port map (
-            clk       => clk,
-            reset     => reset,
-            signal_in => skip2_clean,
-            pulse_out => skip2_pulse
-        );
+    U_SYNC_SW_OPEN1: sync_2ff
+        port map(clk, reset, sw_open(1), sw_open_sync(1));
 
-    op_skip3: one_pulse
-        port map (
-            clk       => clk,
-            reset     => reset,
-            signal_in => skip3_clean,
-            pulse_out => skip3_pulse
-        );
+    U_SYNC_SW_OPEN2: sync_2ff
+        port map(clk, reset, sw_open(2), sw_open_sync(2));
 
+    U_SYNC_SW_SERVICE0: sync_2ff
+        port map(clk, reset, sw_service(0), sw_service_sync(0));
+
+    U_SYNC_SW_SERVICE1: sync_2ff
+        port map(clk, reset, sw_service(1), sw_service_sync(1));
+
+    U_SYNC_SW_SERVICE2: sync_2ff
+        port map(clk, reset, sw_service(2), sw_service_sync(2));
+
+
+    U_DB_BTN_NORMAL: debounce
+        generic map(CLK_FREQ_HZ => CLK_FREQ_HZ, DEBOUNCE_MS => DEBOUNCE_MS)
+        port map(clk, reset, btn_normal_sync, btn_normal_clean);
+
+    U_DB_BTN_PRIORITY: debounce
+        generic map(CLK_FREQ_HZ => CLK_FREQ_HZ, DEBOUNCE_MS => DEBOUNCE_MS)
+        port map(clk, reset, btn_priority_sync, btn_priority_clean);
+
+    U_DB_BTN_RESET: debounce
+        generic map(CLK_FREQ_HZ => CLK_FREQ_HZ, DEBOUNCE_MS => DEBOUNCE_MS)
+        port map(clk, reset, btn_reset_sync, btn_reset_clean);
+
+    U_DB_BTN_SKIP1: debounce
+        generic map(CLK_FREQ_HZ => CLK_FREQ_HZ, DEBOUNCE_MS => DEBOUNCE_MS)
+        port map(clk, reset, btn_skip1_sync, btn_skip1_clean);
+
+    U_DB_BTN_SKIP2: debounce
+        generic map(CLK_FREQ_HZ => CLK_FREQ_HZ, DEBOUNCE_MS => DEBOUNCE_MS)
+        port map(clk, reset, btn_skip2_sync, btn_skip2_clean);
+
+    U_DB_BTN_SKIP3: debounce
+        generic map(CLK_FREQ_HZ => CLK_FREQ_HZ, DEBOUNCE_MS => DEBOUNCE_MS)
+        port map(clk, reset, btn_skip3_sync, btn_skip3_clean);
+
+
+    open_sw_clean <= sw_open_sync;
+    service_clean <= sw_service_sync;
+
+
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                btn_normal_d   <= '0';
+                btn_priority_d <= '0';
+                btn_reset_d    <= '0';
+                btn_skip1_d    <= '0';
+                btn_skip2_d    <= '0';
+                btn_skip3_d    <= '0';
+            else
+                btn_normal_d   <= btn_normal_clean;
+                btn_priority_d <= btn_priority_clean;
+                btn_reset_d    <= btn_reset_clean;
+                btn_skip1_d    <= btn_skip1_clean;
+                btn_skip2_d    <= btn_skip2_clean;
+                btn_skip3_d    <= btn_skip3_clean;
+            end if;
+        end if;
+    end process;
+
+    normal_pulse    <= btn_normal_clean   and not btn_normal_d;
+    priority_pulse  <= btn_priority_clean and not btn_priority_d;
+    reset_pulse     <= btn_reset_clean    and not btn_reset_d;
+
+    skip_pulse(0)   <= btn_skip1_clean and not btn_skip1_d;
+    skip_pulse(1)   <= btn_skip2_clean and not btn_skip2_d;
+    skip_pulse(2)   <= btn_skip3_clean and not btn_skip3_d;
+
+end Behavioral;
     counter1_active <= sw_counter1;
     counter2_active <= sw_counter2;
     counter3_active <= sw_counter3;
