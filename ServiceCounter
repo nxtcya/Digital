@@ -1,0 +1,186 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity service_counter_module is
+    Port (
+        clk            : in  std_logic;
+        reset          : in  std_logic;
+
+        assign_valid   : in  std_logic;
+        assign_ticket  : in  std_logic_vector(10 downto 0);
+
+        service_sw     : in  std_logic;
+        skip_pulse     : in  std_logic;
+        tick_1s        : in  std_logic;
+        blink_1hz      : in  std_logic;
+
+        counter_idle   : out std_logic;
+        calling        : out std_logic;
+        serving        : out std_logic;
+        current_ticket : out std_logic_vector(10 downto 0);
+
+        buzzer_n       : out std_logic;
+        led_out        : out std_logic;
+
+        done_pulse     : out std_logic
+    );
+end service_counter_module;
+
+architecture Behavioral of service_counter_module is
+
+    type state_t is (
+        IDLE,
+        CALL_BEEP1,
+        WAIT_1,
+        CALL_BEEP2,
+        WAIT_2,
+        WAIT_SKIP,
+        SERVING,
+        DONE
+    );
+
+    signal state_reg : state_t := IDLE;
+
+    signal current_ticket_reg : std_logic_vector(10 downto 0) := (others => '0');
+    signal sec_count          : integer range 0 to 15 := 0;
+    signal done_pulse_reg     : std_logic := '0';
+
+begin
+
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                state_reg           <= IDLE;
+                current_ticket_reg  <= (others => '0');
+                sec_count           <= 0;
+                done_pulse_reg      <= '0';
+            else
+                done_pulse_reg <= '0';
+
+                case state_reg is
+
+                    when IDLE =>
+                        sec_count <= 0;
+                        if assign_valid = '1' then
+                            current_ticket_reg <= assign_ticket;
+                            state_reg          <= CALL_BEEP1;
+                            sec_count          <= 0;
+                        end if;
+
+                    when CALL_BEEP1 =>
+                        if tick_1s = '1' then
+                            if sec_count = 1 then
+                                sec_count <= 0;
+                                state_reg <= WAIT_1;
+                            else
+                                sec_count <= sec_count + 1;
+                            end if;
+                        end if;
+
+                        if service_sw = '1' then
+                            sec_count <= 0;
+                            state_reg <= SERVING;
+                        end if;
+
+                    when WAIT_1 =>
+                        if service_sw = '1' then
+                            sec_count <= 0;
+                            state_reg <= SERVING;
+                        elsif tick_1s = '1' then
+                            if sec_count = 14 then
+                                sec_count <= 0;
+                                state_reg <= CALL_BEEP2;
+                            else
+                                sec_count <= sec_count + 1;
+                            end if;
+                        end if;
+
+                    when CALL_BEEP2 =>
+                        if service_sw = '1' then
+                            sec_count <= 0;
+                            state_reg <= SERVING;
+                        elsif tick_1s = '1' then
+                            if sec_count = 1 then
+                                sec_count <= 0;
+                                state_reg <= WAIT_2;
+                            else
+                                sec_count <= sec_count + 1;
+                            end if;
+                        end if;
+
+                    when WAIT_2 =>
+                        if service_sw = '1' then
+                            sec_count <= 0;
+                            state_reg <= SERVING;
+                        elsif skip_pulse = '1' then
+                            sec_count <= 0;
+                            state_reg <= DONE;
+                        elsif tick_1s = '1' then
+                            if sec_count = 14 then
+                                sec_count <= 0;
+                                state_reg <= WAIT_SKIP;
+                            else
+                                sec_count <= sec_count + 1;
+                            end if;
+                        end if;
+
+                    when WAIT_SKIP =>
+                        if service_sw = '1' then
+                            state_reg <= SERVING;
+                        elsif skip_pulse = '1' then
+                            state_reg <= DONE;
+                        end if;
+
+                    when SERVING =>
+                        if service_sw = '0' then
+                            state_reg <= DONE;
+                        end if;
+
+                    when DONE =>
+                        done_pulse_reg <= '1';
+                        current_ticket_reg <= (others => '0');
+                        sec_count <= 0;
+                        state_reg <= IDLE;
+
+                    when others =>
+                        state_reg <= IDLE;
+
+                end case;
+            end if;
+        end if;
+    end process;
+
+    current_ticket <= current_ticket_reg;
+
+    counter_idle <= '1' when state_reg = IDLE else '0';
+
+    calling <= '1' when (
+                    state_reg = CALL_BEEP1 or
+                    state_reg = WAIT_1 or
+                    state_reg = CALL_BEEP2 or
+                    state_reg = WAIT_2 or
+                    state_reg = WAIT_SKIP
+                ) else '0';
+
+    serving <= '1' when state_reg = SERVING else '0';
+
+    buzzer_n <= '0' when (
+                    state_reg = CALL_BEEP1 or
+                    state_reg = CALL_BEEP2
+                ) else '1';
+
+    led_out <= '1' when state_reg = IDLE else
+               blink_1hz when (
+                    state_reg = CALL_BEEP1 or
+                    state_reg = WAIT_1 or
+                    state_reg = CALL_BEEP2 or
+                    state_reg = WAIT_2 or
+                    state_reg = WAIT_SKIP
+               ) else
+               '0';
+
+    done_pulse <= done_pulse_reg;
+
+end Behavioral; -- ต่อกัน 3 กล่อง
