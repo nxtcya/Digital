@@ -1,0 +1,154 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity timing_module is
+    generic (
+        CLK_FREQ_HZ : integer := 50000000;
+        MAX_QUEUE   : integer := 16
+    );
+    Port (
+        clk               : in  std_logic;
+        reset             : in  std_logic;
+
+        serving_vec       : in  std_logic_vector(2 downto 0);
+        done_vec          : in  std_logic_vector(2 downto 0);
+        open_sw_clean     : in  std_logic_vector(2 downto 0);
+
+        total_queue_count : in  integer range 0 to (2*MAX_QUEUE);
+
+        tick_1ms          : out std_logic;
+        tick_1s           : out std_logic;
+        blink_1hz         : out std_logic;
+
+        avg_service_sec   : out integer range 0 to 9999;
+        est_wait_sec      : out integer range 0 to 9999;
+        served_count      : out integer range 0 to 9999
+    );
+end timing_module;
+
+architecture Behavioral of timing_module is
+
+    component time_base
+        generic (
+            CLK_FREQ_HZ : integer := 50000000
+        );
+        Port (
+            clk        : in  std_logic;
+            reset      : in  std_logic;
+            tick_1ms   : out std_logic;
+            tick_1s    : out std_logic;
+            blink_1hz  : out std_logic
+        );
+    end component;
+
+    signal tick_1ms_r   : std_logic;
+    signal tick_1s_r    : std_logic;
+    signal blink_1hz_r  : std_logic;
+
+    signal total_service_time_sec : integer range 0 to 999999 := 0;
+    signal served_count_r         : integer range 0 to 9999   := 0;
+    signal avg_service_sec_r      : integer range 0 to 9999   := 10;
+    signal est_wait_sec_r         : integer range 0 to 9999   := 0;
+
+begin
+
+    U_TIME_BASE : time_base
+        generic map (
+            CLK_FREQ_HZ => CLK_FREQ_HZ
+        )
+        port map (
+            clk       => clk,
+            reset     => reset,
+            tick_1ms  => tick_1ms_r,
+            tick_1s   => tick_1s_r,
+            blink_1hz => blink_1hz_r
+        );
+
+    process(clk)
+        variable active_serving_counters : integer range 0 to 3;
+        variable active_open_counters    : integer range 0 to 3;
+        variable done_count_this_cycle   : integer range 0 to 3;
+        variable temp_avg                : integer range 0 to 9999;
+        variable temp_est                : integer range 0 to 9999;
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                total_service_time_sec <= 0;
+                served_count_r         <= 0;
+                avg_service_sec_r      <= 10;
+                est_wait_sec_r         <= 0;
+            else
+
+                if tick_1s_r = '1' then
+                    active_serving_counters := 0;
+
+                    if serving_vec(0) = '1' then
+                        active_serving_counters := active_serving_counters + 1;
+                    end if;
+                    if serving_vec(1) = '1' then
+                        active_serving_counters := active_serving_counters + 1;
+                    end if;
+                    if serving_vec(2) = '1' then
+                        active_serving_counters := active_serving_counters + 1;
+                    end if;
+
+                    total_service_time_sec <= total_service_time_sec + active_serving_counters;
+                end if;
+
+                done_count_this_cycle := 0;
+
+                if done_vec(0) = '1' then
+                    done_count_this_cycle := done_count_this_cycle + 1;
+                end if;
+                if done_vec(1) = '1' then
+                    done_count_this_cycle := done_count_this_cycle + 1;
+                end if;
+                if done_vec(2) = '1' then
+                    done_count_this_cycle := done_count_this_cycle + 1;
+                end if;
+
+                if done_count_this_cycle > 0 then
+                    served_count_r <= served_count_r + done_count_this_cycle;
+                end if;
+
+
+                if served_count_r > 0 then
+                    temp_avg := total_service_time_sec / served_count_r;
+                    avg_service_sec_r <= temp_avg;
+                else
+                    avg_service_sec_r <= 10;  -- default estimate before enough data
+                end if;
+
+           
+                active_open_counters := 0;
+                if open_sw_clean(0) = '1' then
+                    active_open_counters := active_open_counters + 1;
+                end if;
+                if open_sw_clean(1) = '1' then
+                    active_open_counters := active_open_counters + 1;
+                end if;
+                if open_sw_clean(2) = '1' then
+                    active_open_counters := active_open_counters + 1;
+                end if;
+
+                if active_open_counters > 0 then
+                    temp_est := (total_queue_count * avg_service_sec_r) / active_open_counters;
+                    est_wait_sec_r <= temp_est;
+                else
+                    est_wait_sec_r <= 0;
+                end if;
+
+            end if;
+        end if;
+    end process;
+
+    tick_1ms        <= tick_1ms_r;
+    tick_1s         <= tick_1s_r;
+    blink_1hz       <= blink_1hz_r;
+
+    avg_service_sec <= avg_service_sec_r;
+    est_wait_sec    <= est_wait_sec_r;
+    served_count    <= served_count_r;
+
+end Behavioral;
