@@ -1,0 +1,52 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity double_dabble is
+    Port ( 
+        binary_in : in  std_logic_vector(9 downto 0); -- ค่า 0 ถึง 999
+        bcd_100   : out std_logic_vector(3 downto 0); -- หลักร้อย
+        bcd_10    : out std_logic_vector(3 downto 0); -- หลักสิบ
+        bcd_1     : out std_logic_vector(3 downto 0)  -- หลักหน่วย
+    );
+end double_dabble;
+
+architecture Behavioral of double_dabble is
+begin
+    process(binary_in)
+        variable temp_shift : std_logic_vector(9 downto 0);
+        variable bcd        : unsigned(11 downto 0);
+    begin
+        -- ค่าเริ่มต้น
+        temp_shift := binary_in;
+        bcd        := (others => '0');
+
+        -- ทำการ Shift ทั้งหมด 10 รอบ (ตามจำนวนบิตของ Input)
+        for i in 0 to 9 loop
+            
+            -- กฎของ Double Dabble: ก่อน Shift ถ้า BCD หลักไหนมีค่า >= 5 ให้บวก 3
+            if bcd(3 downto 0) >= 5 then
+                bcd(3 downto 0) := bcd(3 downto 0) + 3;
+            end if;
+            
+            if bcd(7 downto 4) >= 5 then
+                bcd(7 downto 4) := bcd(7 downto 4) + 3;
+            end if;
+            
+            if bcd(11 downto 8) >= 5 then
+                bcd(11 downto 8) := bcd(11 downto 8) + 3;
+            end if;
+
+            -- Shift Left 1 บิต: เลื่อนบิตซ้ายสุดของ temp_shift เข้าไปในบิตขวาสุดของ BCD
+            bcd := bcd(10 downto 0) & temp_shift(9);
+            temp_shift := temp_shift(8 downto 0) & '0';
+            
+        end loop;
+
+        -- จ่ายค่า Output ออกไปใช้งาน
+        bcd_100 <= std_logic_vector(bcd(11 downto 8));
+        bcd_10  <= std_logic_vector(bcd(7 downto 4));
+        bcd_1   <= std_logic_vector(bcd(3 downto 0));
+        
+    end process;
+end Behavioral;
