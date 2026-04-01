@@ -1,0 +1,70 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity time_base is
+    generic (
+        CLK_FREQ_HZ : integer := 50000000
+    );
+    Port (
+        clk        : in  std_logic;
+        reset      : in  std_logic;
+        tick_1ms   : out std_logic;
+        tick_1s    : out std_logic;
+        blink_1hz  : out std_logic
+    );
+end time_base;
+
+architecture Behavioral of time_base is
+
+    constant COUNT_1MS : integer := CLK_FREQ_HZ / 1000;
+    constant COUNT_1S  : integer := CLK_FREQ_HZ;
+
+    signal cnt_1ms     : integer range 0 to COUNT_1MS-1 := 0;
+    signal cnt_1s      : integer range 0 to COUNT_1S-1  := 0;
+
+    signal tick_1ms_r  : std_logic := '0';
+    signal tick_1s_r   : std_logic := '0';
+    signal blink_r     : std_logic := '0';
+
+begin
+
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                cnt_1ms    <= 0;
+                cnt_1s     <= 0;
+                tick_1ms_r <= '0';
+                tick_1s_r  <= '0';
+                blink_r    <= '0';
+            else
+                tick_1ms_r <= '0';
+                tick_1s_r  <= '0';
+
+                
+                if cnt_1ms = COUNT_1MS-1 then
+                    cnt_1ms    <= 0;
+                    tick_1ms_r <= '1';
+                else
+                    cnt_1ms <= cnt_1ms + 1;
+                end if;
+
+                
+                if cnt_1s = COUNT_1S-1 then
+                    cnt_1s    <= 0;
+                    tick_1s_r <= '1';
+                    blink_r   <= not blink_r;
+                else
+                    cnt_1s <= cnt_1s + 1;
+                end if;
+            end if;
+        end if;
+    end process;
+
+    tick_1ms  <= tick_1ms_r;
+    tick_1s   <= tick_1s_r;
+    blink_1hz <= blink_r;
+
+end Behavioral;
+
