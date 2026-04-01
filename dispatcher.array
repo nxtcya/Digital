@@ -1,0 +1,60 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+
+entity dispatcher_array is
+    Port (
+        clk             : in  std_logic;
+        reset           : in  std_logic;
+        priority_empty  : in  std_logic;
+        normal_empty    : in  std_logic;
+        priority_front  : in  std_logic_vector(10 downto 0);
+        normal_front    : in  std_logic_vector(10 downto 0);
+        sw_service      : in  std_logic_vector(2 downto 0);
+        tick_1s         : in  std_logic;
+        blink_1hz       : in  std_logic;
+        deq_normal      : out std_logic;
+        deq_priority    : out std_logic;
+        calling_vec     : out std_logic_vector(2 downto 0);
+        serving_vec     : out std_logic_vector(2 downto 0);
+        done_vec        : out std_logic_vector(2 downto 0);
+        current_ticket0 : out std_logic_vector(10 downto 0);
+        current_ticket1 : out std_logic_vector(10 downto 0);
+        current_ticket2 : out std_logic_vector(10 downto 0);
+        buzzer_n0, buzzer_n1, buzzer_n2 : out std_logic
+    );
+end dispatcher_array;
+
+architecture Structural of dispatcher_array is
+    signal req_v, grant_v : std_logic_vector(2 downto 0);
+    signal assign_v : std_logic_vector(2 downto 0);
+    signal ticket_to_assign : std_logic_vector(10 downto 0);
+begin
+    -- เลือกว่าจะส่งคิวไหนให้ Counter (Arbiter Logic)
+    ticket_to_assign <= priority_front when priority_empty = '0' else normal_front;
+
+    U_ARBITER : entity work.queue_arbiter
+        port map (clk=>clk, reset=>reset, priority_empty=>priority_empty, 
+                  normal_empty=>normal_empty, deq_priority=>deq_priority, 
+                  deq_normal=>deq_normal, req_vector=>req_v, grant_vector=>grant_v);
+
+    -- Counter 1
+    U_C0 : entity work.service_counter_module
+        port map (clk=>clk, reset=>reset, assign_valid=>grant_v(0), assign_ticket=>ticket_to_assign,
+                  service_sw=>sw_service(0), skip_pulse=>'0', tick_1s=>tick_1s, blink_1hz=>blink_1hz,
+                  counter_idle=>req_v(0), calling=>calling_vec(0), serving=>serving_vec(0),
+                  current_ticket=>current_ticket0, buzzer_n=>buzzer_n0, done_pulse=>done_vec(0));
+    
+    -- Counter 2
+    U_C1 : entity work.service_counter_module
+        port map (clk=>clk, reset=>reset, assign_valid=>grant_v(1), assign_ticket=>ticket_to_assign,
+                  service_sw=>sw_service(1), skip_pulse=>'0', tick_1s=>tick_1s, blink_1hz=>blink_1hz,
+                  counter_idle=>req_v(1), calling=>calling_vec(1), serving=>serving_vec(1),
+                  current_ticket=>current_ticket1, buzzer_n=>buzzer_n1, done_pulse=>done_vec(1));
+
+    -- Counter 3
+    U_C2 : entity work.service_counter_module
+        port map (clk=>clk, reset=>reset, assign_valid=>grant_v(2), assign_ticket=>ticket_to_assign,
+                  service_sw=>sw_service(2), skip_pulse=>'0', tick_1s=>tick_1s, blink_1hz=>blink_1hz,
+                  counter_idle=>req_v(2), calling=>calling_vec(2), serving=>serving_vec(2),
+                  current_ticket=>current_ticket2, buzzer_n=>buzzer_n2, done_pulse=>done_vec(2));
+end Structural;
