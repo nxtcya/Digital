@@ -1,0 +1,55 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+
+entity queue_arbiter is
+    Port (
+        clk            : in  std_logic;
+        reset          : in  std_logic;
+        
+        -- เชื่อมกับ FIFO [cite: 42]
+        priority_empty : in  std_logic;
+        normal_empty   : in  std_logic;
+        deq_priority   : out std_logic;
+        deq_normal     : out std_logic;
+        
+        -- เชื่อมกับ Dispatcher 3 ตัว (Request Signals) [cite: 52]
+        req_vector     : in  std_logic_vector(2 downto 0); 
+        grant_vector   : out std_logic_vector(2 downto 0)
+    );
+end queue_arbiter;
+
+architecture Behavioral of queue_arbiter is
+begin
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                grant_vector <= "000"; deq_priority <= '0'; deq_normal <= '0';
+            else
+                grant_vector <= "000"; deq_priority <= '0'; deq_normal <= '0';
+                
+                -- ลอจิกตัดสิน: เลือก Dispatcher ตามลำดับ 1->2->3
+                if req_vector(0) = '1' then
+                    if priority_empty = '0' then
+                        grant_vector(0) <= '1'; deq_priority <= '1';
+                    elsif normal_empty = '0' then
+                        grant_vector(0) <= '1'; deq_normal <= '1';
+                    end if;
+                elsif req_vector(1) = '1' then
+                    if priority_empty = '0' then
+                        grant_vector(1) <= '1'; deq_priority <= '1';
+                    elsif normal_empty = '0' then
+                        grant_vector(1) <= '1'; deq_normal <= '1';
+                    end if;
+                elsif req_vector(2) = '1' then
+                    if priority_empty = '0' then
+                        grant_vector(2) <= '1'; deq_priority <= '1';
+                    elsif normal_empty = '0' then
+                        grant_vector(2) <= '1'; deq_normal <= '1';
+                    end if;
+                end if;
+            end if;
+        end if;
+    end process;
+end Behavioral;
+
