@@ -1,0 +1,55 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity simple_fifo is
+    generic (
+        DATA_WIDTH : integer := 11;
+        DEPTH      : integer := 16
+    );
+    Port (
+        clk    : in  std_logic;
+        reset  : in  std_logic;
+        wr_en  : in  std_logic; -- เขียนเมื่อ full = '0' [cite: 83]
+        rd_en  : in  std_logic; -- อ่านเมื่อ empty = '0' [cite: 83]
+        din    : in  std_logic_vector(DATA_WIDTH-1 downto 0);
+        dout   : out std_logic_vector(DATA_WIDTH-1 downto 0);
+        empty  : out std_logic;
+        full   : out std_logic;
+        count  : out integer range 0 to DEPTH
+    );
+end simple_fifo;
+
+architecture Behavioral of simple_fifo is
+    type mem_type is array (0 to DEPTH-1) of std_logic_vector(DATA_WIDTH-1 downto 0);
+    signal fifo_mem : mem_type := (others => (others => '0'));
+    signal head : integer range 0 to DEPTH-1 := 0; -- ตำแหน่งอ่าน
+    signal tail : integer range 0 to DEPTH-1 := 0; -- ตำแหน่งเขียน
+    signal fill_cnt : integer range 0 to DEPTH := 0;
+begin
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                head <= 0; tail <= 0; fill_cnt <= 0;
+            else
+                -- ลอจิกเขียน (Write)
+                if wr_en = '1' and fill_cnt < DEPTH then
+                    fifo_mem(tail) <= din;
+                    tail <= (tail + 1) mod DEPTH;
+                    if rd_en = '0' then fill_cnt <= fill_cnt + 1; end if;
+                end if;
+                -- ลอจิกอ่าน (Read)
+                if rd_en = '1' and fill_cnt > 0 then
+                    head <= (head + 1) mod DEPTH;
+                    if wr_en = '0' then fill_cnt <= fill_cnt - 1; end if;
+                end if;
+            end if;
+        end if;
+    end process;
+
+    dout  <= fifo_mem(head);
+    empty <= '1' when fill_cnt = 0 else '0';
+    full  <= '1' when fill_cnt = DEPTH else '0';
+    count <= fill_cnt;
+end Behavioral;
