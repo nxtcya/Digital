@@ -36,7 +36,7 @@ architecture Behavioral of service_counter_module is
         CALL_BEEP2,
         WAIT_2,
         WAIT_SKIP,
-        SERVING,
+        STATE_SERVING,
         DONE
     );
 
@@ -81,13 +81,13 @@ begin
 
                         if service_sw = '1' then
                             sec_count <= 0;
-                            state_reg <= SERVING;
+                            state_reg <= STATE_SERVING;
                         end if;
 
                     when WAIT_1 =>
                         if service_sw = '1' then
                             sec_count <= 0;
-                            state_reg <= SERVING;
+                            state_reg <= STATE_SERVING;
                         elsif tick_1s = '1' then
                             if sec_count = 14 then
                                 sec_count <= 0;
@@ -100,7 +100,7 @@ begin
                     when CALL_BEEP2 =>
                         if service_sw = '1' then
                             sec_count <= 0;
-                            state_reg <= SERVING;
+                            state_reg <= STATE_SERVING;
                         elsif tick_1s = '1' then
                             if sec_count = 1 then
                                 sec_count <= 0;
@@ -113,14 +113,14 @@ begin
                     when WAIT_2 =>
                         if service_sw = '1' then
                             sec_count <= 0;
-                            state_reg <= SERVING;
+                            state_reg <= STATE_SERVING;
                         elsif skip_pulse = '1' then
                             sec_count <= 0;
                             state_reg <= DONE;
                         elsif tick_1s = '1' then
                             if sec_count = 14 then
                                 sec_count <= 0;
-                                state_reg <= WAIT_SKIP;
+                                state_reg <= DONE;
                             else
                                 sec_count <= sec_count + 1;
                             end if;
@@ -128,12 +128,12 @@ begin
 
                     when WAIT_SKIP =>
                         if service_sw = '1' then
-                            state_reg <= SERVING;
+                            state_reg <= STATE_SERVING;
                         elsif skip_pulse = '1' then
                             state_reg <= DONE;
                         end if;
 
-                    when SERVING =>
+                    when STATE_SERVING =>
                         if service_sw = '0' then
                             state_reg <= DONE;
                         end if;
@@ -164,7 +164,7 @@ begin
                     state_reg = WAIT_SKIP
                 ) else '0';
 
-    serving <= '1' when state_reg = SERVING else '0';
+    serving <= '1' when state_reg = STATE_SERVING else '0';
 
     buzzer_n <= '0' when (
                     state_reg = CALL_BEEP1 or
@@ -183,4 +183,6 @@ begin
 
     done_pulse <= done_pulse_reg;
 
-end Behavioral; -- ต่อกัน 3 กล่อง
+end Behavioral;
+
+
