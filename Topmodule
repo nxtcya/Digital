@@ -1,0 +1,176 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity queue_system_top is
+    generic (
+        CLK_FREQ_HZ : integer := 50000000;
+        FIFO_DEPTH  : integer := 16
+    );
+    Port (
+        clk             : in  std_logic;
+        reset           : in  std_logic;
+        btn_normal      : in  std_logic;
+        btn_priority    : in  std_logic;
+        btn_skip1       : in  std_logic;
+        btn_skip2       : in  std_logic;
+        btn_skip3       : in  std_logic;
+        sw_open         : in  std_logic_vector(2 downto 0);
+        sw_service      : in  std_logic_vector(2 downto 0);
+        sw_display_mode : in  std_logic;
+        led_status      : out std_logic_vector(2 downto 0);
+        buzzer_n        : out std_logic;
+        seg_an          : out std_logic_vector(3 downto 0);
+        seg_cat         : out std_logic_vector(7 downto 0);
+        lcd_scl         : out std_logic;
+        lcd_sda         : inout std_logic
+    );
+end queue_system_top;
+
+architecture Structural of queue_system_top is
+
+    -- [Level 1] ประกาศสัญญาณภายในทั้งหมดเพื่อเชื่อมต่อโมดูล
+    signal normal_pulse_s, priority_pulse_s : std_logic;
+    signal deq_normal_s, deq_priority_s     : std_logic;
+    signal normal_empty_s, priority_empty_s : std_logic;
+    signal normal_front_s, priority_front_s : std_logic_vector(10 downto 0);
+    signal open_sw_clean_s                  : std_logic_vector(2 downto 0);
+    signal calling_vec_s, serving_vec_s     : std_logic_vector(2 downto 0);
+    signal done_vec_s, led_vec_s            : std_logic_vector(2 downto 0);
+    signal buzzer_n0_s, buzzer_n1_s, buzzer_n2_s : std_logic;
+    
+    signal total_count_s    : integer range 0 to 32;
+    signal tick_1ms_s       : std_logic;
+    signal tick_1s_s        : std_logic;
+    signal blink_1hz_s      : std_logic;
+    signal est_wait_min_s   : integer range 0 to 999;
+    signal lcd_ticket_s     : std_logic_vector(10 downto 0);
+    signal current_ticket0_s, current_ticket1_s, current_ticket2_s : std_logic_vector(10 downto 0);
+	 
+	 signal reset_inv         : std_logic;
+    signal btn_normal_inv    : std_logic;
+    signal btn_priority_inv  : std_logic;
+    signal btn_skip1_inv     : std_logic;
+    signal btn_skip2_inv     : std_logic;
+    signal btn_skip3_inv     : std_logic;
+
+begin
+
+	 reset_inv        <= not reset;        -- พิน P55 (PB6)
+    btn_normal_inv   <= not btn_normal;   -- พิน P45 (PB1)
+    btn_priority_inv <= not btn_priority; -- พิน P46 (PB2)
+    btn_skip1_inv    <= not btn_skip1;    -- พิน P47 (PB3)
+    btn_skip2_inv    <= not btn_skip2;    -- พิน P48 (PB4)
+    btn_skip3_inv    <= not btn_skip3;    -- พิน P51 (PB5
+
+    -- U_INPUT: รับสัญญาณและ Debounce (Level 2.1)
+    U_INPUT : entity work.input_module
+        port map (
+            clk            => clk,
+            reset          => reset_inv,        -- ใช้ตัวที่กลับแล้ว
+            btn_normal     => btn_normal_inv,   -- ใช้ตัวที่กลับแล้ว
+            btn_priority   => btn_priority_inv, 
+            btn_reset      => reset_inv,        -- ปุ่ม reset เดียวกัน
+            btn_skip1      => btn_skip1_inv,
+            btn_skip2      => btn_skip2_inv,
+            btn_skip3      => btn_skip3_inv,
+            sw_open        => sw_open,
+            sw_service     => sw_service,
+            normal_pulse   => normal_pulse_s,
+            priority_pulse => priority_pulse_s,
+            open_sw_clean  => open_sw_clean_s
+        );
+
+    -- U_QUEUE: จัดการ FIFO (Level 2.3)
+    U_QUEUE : entity work.queue_management_module
+        generic map ( DEPTH => FIFO_DEPTH )
+        port map (
+            clk            => clk,
+            reset          => reset,
+            normal_pulse   => normal_pulse_s,
+            priority_pulse => priority_pulse_s,
+            deq_normal     => deq_normal_s,
+            deq_priority   => deq_priority_s,
+            normal_front   => normal_front_s,
+            priority_front => priority_front_s,
+            normal_empty   => normal_empty_s,
+            priority_empty => priority_empty_s,
+            total_count    => total_count_s
+        );
+
+    -- U_DISPATCHER: กระจายคิว (Level 2.4)
+    U_DISPATCHER_ARRAY : entity work.dispatcher_array
+        port map (
+            clk             => clk,
+            reset           => reset,
+            priority_empty  => priority_empty_s,
+            normal_empty    => normal_empty_s,
+            priority_front  => priority_front_s,
+            normal_front    => normal_front_s,
+            sw_service      => sw_service,
+            tick_1s         => tick_1s_s,
+            blink_1hz       => blink_1hz_s,
+            deq_normal      => deq_normal_s,
+            deq_priority    => deq_priority_s,
+            calling_vec     => calling_vec_s,
+            serving_vec     => serving_vec_s,
+            done_vec        => done_vec_s,
+            current_ticket0 => current_ticket0_s,
+            current_ticket1 => current_ticket1_s,
+            current_ticket2 => current_ticket2_s,
+            buzzer_n0       => buzzer_n0_s,
+            buzzer_n1       => buzzer_n1_s,
+            buzzer_n2       => buzzer_n2_s
+        );
+
+    -- U_TIMING: คำนวณเวลา (Level 2.5)
+    U_TIMING : entity work.timing_module
+        generic map ( CLK_FREQ_HZ => CLK_FREQ_HZ, MAX_QUEUE => FIFO_DEPTH )
+        port map (
+            clk               => clk,
+            reset             => reset,
+            serving_vec       => serving_vec_s,
+            done_vec          => done_vec_s,
+            open_sw_clean     => open_sw_clean_s,
+            total_queue_count => total_count_s,
+            tick_1ms          => tick_1ms_s,
+            tick_1s           => tick_1s_s,
+            blink_1hz         => blink_1hz_s,
+            est_wait_min      => est_wait_min_s
+        );
+
+    -- U_OUTPUT: แสดงผล (Level 2.6)
+    U_OUTPUT : entity work.output_module
+        port map (
+            clk             => clk,
+            reset           => reset,
+            tick_1ms        => tick_1ms_s,
+            sw_display_mode => sw_display_mode,
+            est_wait_min    => est_wait_min_s,
+            calling_vec     => calling_vec_s,
+            serving_vec     => serving_vec_s,
+            led_in          => serving_vec_s, -- โชว์สถานะช่องบริการผ่าน LED
+            buzzer_n0       => buzzer_n0_s,
+            buzzer_n1       => buzzer_n1_s,
+            buzzer_n2       => buzzer_n2_s,
+            current_ticket0 => current_ticket0_s,
+            current_ticket1 => current_ticket1_s,
+            current_ticket2 => current_ticket2_s,
+            led_status      => led_status,
+            buzzer_n        => buzzer_n,
+            current_show_ticket => lcd_ticket_s,
+            seg_an          => seg_an,
+            seg_cat         => seg_cat
+        );
+
+    -- U_LCD: ควบคุม LCD (Level 3)
+    U_LCD : entity work.lcd_controller
+        port map (
+            clk            => clk,
+            reset          => reset,
+            current_ticket => lcd_ticket_s,
+            lcd_scl        => lcd_scl,
+            lcd_sda        => lcd_sda
+        );
+
+end Structural;
