@@ -1,0 +1,58 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity queue_management_module is
+    generic ( DEPTH : integer := 16 );
+    Port (
+        clk             : in  std_logic;
+        reset           : in  std_logic;
+        normal_pulse    : in  std_logic;
+        priority_pulse  : in  std_logic;
+        deq_normal      : in  std_logic;
+        deq_priority    : in  std_logic;
+        normal_front    : out std_logic_vector(10 downto 0);
+        priority_front  : out std_logic_vector(10 downto 0);
+        normal_empty    : out std_logic;
+        priority_empty  : out std_logic;
+        total_count     : out integer range 0 to 32
+    );
+end queue_management_module;
+
+architecture Behavioral of queue_management_module is
+    signal n_count, p_count : integer range 0 to 999 := 0;
+    signal n_fifo_count, p_fifo_count : integer range 0 to 16;
+    signal n_wr, p_wr : std_logic;
+begin
+    -- 1. สร้างหมายเลขคิวใหม่เมื่อมีพัลส์เข้ามา
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                n_count <= 0; p_count <= 0;
+            else
+                if normal_pulse = '1' then
+                    if n_count = 999 then n_count <= 0; else n_count <= n_count + 1; end if;
+                end if;
+                if priority_pulse = '1' then
+                    if p_count = 999 then p_count <= 0; else p_count <= p_count + 1; end if;
+                end if;
+            end if;
+        end if;
+    end process;
+
+    -- 2. เชื่อมต่อกับ Simple FIFO (Level 3.1)
+    n_wr <= normal_pulse;
+    U_FIFO_NORMAL : entity work.simple_fifo
+        port map (clk=>clk, reset=>reset, wr_en=>n_wr, rd_en=>deq_normal, 
+                  din=>'0' & std_logic_vector(to_unsigned(n_count, 10)), dout=>normal_front, 
+                  empty=>normal_empty, count=>n_fifo_count);
+
+    p_wr <= priority_pulse;
+    U_FIFO_PRIORITY : entity work.simple_fifo
+        port map (clk=>clk, reset=>reset, wr_en=>p_wr, rd_en=>deq_priority, 
+                  din=>'1' & std_logic_vector(to_unsigned(p_count, 10)), dout=>priority_front, 
+                  empty=>priority_empty, count=>p_fifo_count);
+
+    total_count <= n_fifo_count + p_fifo_count;
+end Behavioral;
