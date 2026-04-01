@@ -1,0 +1,121 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity output_module is
+    Port (
+        clk             : in  std_logic;
+        reset           : in  std_logic;
+        tick_1ms        : in  std_logic;
+        sw_display_mode : in  std_logic;
+        est_wait_min    : in  integer range 0 to 999;
+        calling_vec     : in  std_logic_vector(2 downto 0);
+        serving_vec     : in  std_logic_vector(2 downto 0);
+        led_in          : in  std_logic_vector(2 downto 0);
+        buzzer_n0       : in  std_logic;
+        buzzer_n1       : in  std_logic;
+        buzzer_n2       : in  std_logic;
+        current_ticket0 : in  std_logic_vector(10 downto 0);
+        current_ticket1 : in  std_logic_vector(10 downto 0);
+        current_ticket2 : in  std_logic_vector(10 downto 0);
+        led_status      : out std_logic_vector(2 downto 0);
+        buzzer_n        : out std_logic;
+        -- เพิ่มพอร์ตนี้ และตรวจสอบเซมิโคลอนบรรทัดข้างบน
+        current_show_ticket : out std_logic_vector(10 downto 0);
+        seg_an          : out std_logic_vector(3 downto 0);
+        -- ตัวสุดท้าย "ห้าม" มีเซมิโคลอนปิดท้าย
+        seg_cat         : out std_logic_vector(7 downto 0) 
+    );
+end output_module;
+
+architecture Behavioral of output_module is
+
+    component seg7_mux4
+        Port (
+            clk      : in  std_logic;
+            reset    : in  std_logic;
+            tick_1ms : in  std_logic;
+            digit3   : in  std_logic_vector(3 downto 0);
+            digit2   : in  std_logic_vector(3 downto 0);
+            digit1   : in  std_logic_vector(3 downto 0);
+            digit0   : in  std_logic_vector(3 downto 0);
+            seg_an   : out std_logic_vector(3 downto 0);
+            seg_cat  : out std_logic_vector(7 downto 0)
+        );
+    end component;
+
+    component double_dabble
+        Port ( 
+            binary_in : in  std_logic_vector(9 downto 0);
+            bcd_100   : out std_logic_vector(3 downto 0);
+            bcd_10    : out std_logic_vector(3 downto 0);
+            bcd_1     : out std_logic_vector(3 downto 0)
+        );
+    end component;
+
+    signal show_ticket    : std_logic_vector(10 downto 0) := (others => '0');
+    signal bin_to_convert : std_logic_vector(9 downto 0) := (others => '0');
+    signal bcd_100, bcd_10, bcd_1 : std_logic_vector(3 downto 0);
+    signal digit3_code, digit2_code, digit1_code, digit0_code : std_logic_vector(3 downto 0);
+
+begin
+
+    led_status <= led_in;
+    buzzer_n <= buzzer_n0 and buzzer_n1 and buzzer_n2;
+    current_show_ticket <= show_ticket; -- ส่งออกไปหา LCD
+
+    process(calling_vec, serving_vec, current_ticket0, current_ticket1, current_ticket2)
+    begin
+        if calling_vec(0) = '1' then show_ticket <= current_ticket0;
+        elsif calling_vec(1) = '1' then show_ticket <= current_ticket1;
+        elsif calling_vec(2) = '1' then show_ticket <= current_ticket2;
+        elsif serving_vec(0) = '1' then show_ticket <= current_ticket0;
+        elsif serving_vec(1) = '1' then show_ticket <= current_ticket1;
+        elsif serving_vec(2) = '1' then show_ticket <= current_ticket2;
+        else show_ticket <= (others => '0');
+        end if;
+    end process;
+
+    process(sw_display_mode, show_ticket, est_wait_min)
+    begin
+        if sw_display_mode = '0' then
+            bin_to_convert <= show_ticket(9 downto 0);
+        else
+            bin_to_convert <= std_logic_vector(to_unsigned(est_wait_min, 10));
+        end if;
+    end process;
+
+    U_BCD : double_dabble
+        port map (
+            binary_in => bin_to_convert,
+            bcd_100   => bcd_100,
+            bcd_10    => bcd_10,
+            bcd_1     => bcd_1
+        );
+
+    process(sw_display_mode, show_ticket, calling_vec, serving_vec, bcd_100, bcd_10, bcd_1)
+    begin
+        if sw_display_mode = '0' then
+            if (calling_vec = "000" and serving_vec = "000") then
+                digit3_code <= "1110"; digit2_code <= "1110"; digit1_code <= "1110"; digit0_code <= "1110";
+            else
+                if show_ticket(10) = '1' then digit3_code <= "1011"; -- P
+                else digit3_code <= "1010"; -- n
+                end if;
+                digit2_code <= bcd_100; digit1_code <= bcd_10; digit0_code <= bcd_1;
+            end if;
+        else
+            digit3_code <= "1101"; -- t
+            digit2_code <= "1100"; -- -
+            digit1_code <= bcd_10; digit0_code <= bcd_1;
+        end if;
+    end process;
+
+    U_SEG7 : seg7_mux4
+        port map (
+            clk => clk, reset => reset, tick_1ms => tick_1ms,
+            digit3 => digit3_code, digit2 => digit2_code, digit1 => digit1_code, digit0 => digit0_code,
+            seg_an => seg_an, seg_cat => seg_cat
+        );
+
+end Behavioral;
