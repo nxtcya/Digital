@@ -1,0 +1,39 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+
+entity seg7_decoder is
+    Port (
+        code    : in  std_logic_vector(3 downto 0);
+        seg_out : out std_logic_vector(7 downto 0) -- ลำดับ: a, b, c, d, e, f, g, dp
+    );
+end seg7_decoder;
+
+architecture Behavioral of seg7_decoder is
+begin
+    process(code)
+    begin
+        -- รูปแบบบิต: "abcdefg_dp" (Active-Low: 0 = ไฟติด, 1 = ไฟดับ)
+        case code is
+            -- ตัวเลข 0-9
+            when "0000" => seg_out <= "11000000"; -- 0
+            when "0001" => seg_out <= "11111001"; -- 1
+            when "0010" => seg_out <= "10100100"; -- 2
+            when "0011" => seg_out <= "10110000"; -- 3
+            when "0100" => seg_out <= "10011001"; -- 4
+            when "0101" => seg_out <= "10010010"; -- 5
+            when "0110" => seg_out <= "10000010"; -- 6
+            when "0111" => seg_out <= "11111000"; -- 7
+            when "1000" => seg_out <= "10000000"; -- 8
+            when "1001" => seg_out <= "10010000"; -- 9
+            
+            -- อักขระพิเศษตาม Top-Down Design (Calling / Waiting Mode)
+            when "1010" => seg_out <= "11010101"; -- A = 'n' (ติดแค่ c, e, g)
+            when "1011" => seg_out <= "00110001"; -- B = 'P' (ติดแค่ a, b, e, f, g)
+            when "1100" => seg_out <= "11111101"; -- C = '-' (ขีดกลาง ติดแค่ g)
+            when "1101" => seg_out <= "11100001"; -- D = 't' (ติดแค่ d, e, f, g)
+            when "1110" => seg_out <= "11111111"; -- E = ช่องว่าง (ดับหมด)
+            
+            when others => seg_out <= "11111111"; -- กันเหนียว (ดับหมด)
+        end case;
+    end process;
+end Behavioral;
