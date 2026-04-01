@@ -1,0 +1,79 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity seg7_mux4 is
+    Port (
+        clk      : in  std_logic;
+        reset    : in  std_logic;
+        tick_1ms : in  std_logic;
+
+        digit3   : in  std_logic_vector(3 downto 0);
+        digit2   : in  std_logic_vector(3 downto 0);
+        digit1   : in  std_logic_vector(3 downto 0);
+        digit0   : in  std_logic_vector(3 downto 0);
+
+        seg_an   : out std_logic_vector(3 downto 0);
+        seg_cat  : out std_logic_vector(7 downto 0)
+    );
+end seg7_mux4;
+
+architecture Behavioral of seg7_mux4 is
+
+    component seg7_decoder
+        Port (
+            code    : in  std_logic_vector(3 downto 0);
+            seg_out : out std_logic_vector(7 downto 0)
+        );
+    end component;
+
+    signal scan_sel   : integer range 0 to 3 := 0;
+    signal code_now   : std_logic_vector(3 downto 0) := "1111";
+    signal seg_data   : std_logic_vector(7 downto 0);
+
+begin
+
+    U_DECODER : seg7_decoder
+        port map (
+            code    => code_now,
+            seg_out => seg_data
+        );
+
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                scan_sel <= 0;
+            else
+                if tick_1ms = '1' then
+                    if scan_sel = 3 then
+                        scan_sel <= 0;
+                    else
+                        scan_sel <= scan_sel + 1;
+                    end if;
+                end if;
+            end if;
+        end if;
+    end process;
+
+    process(scan_sel, digit3, digit2, digit1, digit0, seg_data)
+    begin
+        case scan_sel is
+            when 0 =>
+                code_now <= digit0;
+                seg_an   <= "1110"; -- digit0 on
+            when 1 =>
+                code_now <= digit1;
+                seg_an   <= "1101"; -- digit1 on
+            when 2 =>
+                code_now <= digit2;
+                seg_an   <= "1011"; -- digit2 on
+            when others =>
+                code_now <= digit3;
+                seg_an   <= "0111"; -- digit3 on
+        end case;
+
+        seg_cat <= seg_data;
+    end process;
+
+end Behavioral;
