@@ -1,0 +1,133 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity timing_module is
+    generic (
+        CLK_FREQ_HZ : integer := 50000000;
+        MAX_QUEUE   : integer := 16
+    );
+    Port (
+        clk               : in  std_logic;
+        reset             : in  std_logic;
+
+        serving_vec       : in  std_logic_vector(2 downto 0);
+        done_vec          : in  std_logic_vector(2 downto 0);
+        open_sw_clean     : in  std_logic_vector(2 downto 0);
+
+        total_queue_count : in  integer range 0 to (2*MAX_QUEUE);
+
+        tick_1ms          : out std_logic;
+        tick_1s           : out std_logic;
+        blink_1hz         : out std_logic;
+
+        avg_service_sec   : out integer range 0 to 9999;
+        est_wait_min      : out integer range 0 to 999  -- เปลี่ยนเป็นนาทีเพื่อให้โชว์บนจอได้
+    );
+end timing_module;
+
+architecture Behavioral of timing_module is
+
+    component time_base
+        generic ( CLK_FREQ_HZ : integer := 50000000 );
+        Port (
+            clk        : in  std_logic;
+            reset      : in  std_logic;
+            tick_1ms   : out std_logic;
+            tick_1s    : out std_logic;
+            blink_1hz  : out std_logic
+        );
+    end component;
+
+    signal tick_1ms_r  : std_logic;
+    signal tick_1s_r   : std_logic;
+    signal blink_1hz_r : std_logic;
+
+    signal total_service_time_sec : integer range 0 to 999999 := 0;
+    signal served_batch_count     : integer range 0 to 15     := 0;
+    
+    signal avg_service_sec_r      : integer range 0 to 9999   := 10;
+    signal est_wait_min_r         : integer range 0 to 999    := 0;
+
+begin
+
+    U_TIME_BASE : time_base
+        generic map ( CLK_FREQ_HZ => CLK_FREQ_HZ )
+        port map (
+            clk       => clk,
+            reset     => reset,
+            tick_1ms  => tick_1ms_r,
+            tick_1s   => tick_1s_r,
+            blink_1hz => blink_1hz_r
+        );
+
+    process(clk)
+        variable active_serving_counters : integer range 0 to 3;
+        variable active_open_counters    : integer range 0 to 3;
+        variable done_count_this_cycle   : integer range 0 to 3;
+        variable temp_est                : integer range 0 to 9999;
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                total_service_time_sec <= 0;
+                served_batch_count     <= 0;
+                avg_service_sec_r      <= 10;
+                est_wait_min_r         <= 0;
+            else
+                
+                -- นับเวลาให้บริการรวม
+                if tick_1s_r = '1' then
+                    active_serving_counters := 0;
+                    if serving_vec(0) = '1' then active_serving_counters := active_serving_counters + 1; end if;
+                    if serving_vec(1) = '1' then active_serving_counters := active_serving_counters + 1; end if;
+                    if serving_vec(2) = '1' then active_serving_counters := active_serving_counters + 1; end if;
+
+                    total_service_time_sec <= total_service_time_sec + active_serving_counters;
+                end if;
+
+                -- เช็คว่ามีคิวให้บริการเสร็จไหม
+                done_count_this_cycle := 0;
+                if done_vec(0) = '1' then done_count_this_cycle := done_count_this_cycle + 1; end if;
+                if done_vec(1) = '1' then done_count_this_cycle := done_count_this_cycle + 1; end if;
+                if done_vec(2) = '1' then done_count_this_cycle := done_count_this_cycle + 1; end if;
+
+                -- Batch Average: อัปเดตค่าเฉลี่ยทุกๆ 4 คิว (เพื่อใช้ /4 ซึ่งแปลงเป็นการเลื่อนบิตได้)
+                if done_count_this_cycle > 0 then
+                    if (served_batch_count + done_count_this_cycle) >= 4 then
+                        avg_service_sec_r <= total_service_time_sec / 4; 
+                        served_batch_count <= 0;
+                        total_service_time_sec <= 0;
+                    else
+                        served_batch_count <= served_batch_count + done_count_this_cycle;
+                    end if;
+                end if;
+
+                -- ประเมินเวลารอ (เป็นนาที) 
+                -- สูตร: (จำนวนคิว * เวลาเฉลี่ยต่อคิว) / (จำนวนช่องที่เปิด * 60 วินาที)
+                active_open_counters := 0;
+                if open_sw_clean(0) = '1' then active_open_counters := active_open_counters + 1; end if;
+                if open_sw_clean(1) = '1' then active_open_counters := active_open_counters + 1; end if;
+                if open_sw_clean(2) = '1' then active_open_counters := active_open_counters + 1; end if;
+
+                -- ใช้ CASE เพื่อให้ตัวหารเป็นค่าคงที่ (Constant Division) FPGA จะสังเคราะห์ได้ง่ายมาก
+                case active_open_counters is
+                    when 1 => temp_est := (total_queue_count * avg_service_sec_r) / 60;
+                    when 2 => temp_est := (total_queue_count * avg_service_sec_r) / 120;
+                    when 3 => temp_est := (total_queue_count * avg_service_sec_r) / 180;
+                    when others => temp_est := 0;
+                end case;
+
+                est_wait_min_r <= temp_est;
+
+            end if;
+        end if;
+    end process;
+
+    tick_1ms        <= tick_1ms_r;
+    tick_1s         <= tick_1s_r;
+    blink_1hz       <= blink_1hz_r;
+
+    avg_service_sec <= avg_service_sec_r;
+    est_wait_min    <= est_wait_min_r;
+
+end Behavioral;
