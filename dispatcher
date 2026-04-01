@@ -1,189 +1,118 @@
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.NUMERIC_STD.ALL;
 
-entity dispatcher is
-    port (
-        clk                : in  std_logic;
-        reset              : in  std_logic;
-        tick_1s            : in  std_logic;
+entity dispatcher_module is
+    Port (
+        clk            : in  std_logic;
+        reset          : in  std_logic;
 
-        counter_enable     : in  std_logic;
-        service_done_sw    : in  std_logic;
-        skip_pulse         : in  std_logic;
+        open_sw_clean  : in  std_logic_vector(2 downto 0);
+        counter_idle   : in  std_logic_vector(2 downto 0);
 
-        next_queue_in      : in  std_logic_vector(7 downto 0);
-        next_queue_valid   : in  std_logic;
-        next_queue_is_pri  : in  std_logic;
+        priority_front : in  std_logic_vector(10 downto 0);
+        normal_front   : in  std_logic_vector(10 downto 0);
 
-        request_next_queue : out std_logic;
+        priority_empty : in  std_logic;
+        normal_empty   : in  std_logic;
 
-        current_queue      : out std_logic_vector(7 downto 0);
-        current_valid      : out std_logic;
-        current_is_pri     : out std_logic;
+        deq_priority   : out std_logic;
+        deq_normal     : out std_logic;
 
-        buzzer_out         : out std_logic;
-        state_calling      : out std_logic;
-        state_serving      : out std_logic
+        assign_valid   : out std_logic_vector(2 downto 0);
+        assign_ticket0 : out std_logic_vector(10 downto 0);
+        assign_ticket1 : out std_logic_vector(10 downto 0);
+        assign_ticket2 : out std_logic_vector(10 downto 0)
     );
-end dispatcher;
+end dispatcher_module;
 
-architecture Behavioral of dispatcher is
+architecture Behavioral of dispatcher_module is
 
-    type state_t is (
-        IDLE,
-        LOAD_QUEUE,
-        BUZZER_ON,
-        WAIT_CUSTOMER_1,
-        RECALL_BUZZER,
-        WAIT_CUSTOMER_2,
-        SERVING
-    );
+    signal deq_priority_r : std_logic := '0';
+    signal deq_normal_r   : std_logic := '0';
 
-    signal state_reg : state_t := IDLE;
+    signal assign_valid_r : std_logic_vector(2 downto 0) := (others => '0');
 
-    signal current_queue_reg    : std_logic_vector(7 downto 0) := (others => '0');
-    signal current_valid_reg    : std_logic := '0';
-    signal current_is_pri_reg   : std_logic := '0';
-
-    signal request_next_reg     : std_logic := '0';
-    signal buzzer_reg           : std_logic := '0';
-
-    signal sec_count            : integer range 0 to 20 := 0;
+    signal assign_ticket0_r : std_logic_vector(10 downto 0) := (others => '0');
+    signal assign_ticket1_r : std_logic_vector(10 downto 0) := (others => '0');
+    signal assign_ticket2_r : std_logic_vector(10 downto 0) := (others => '0');
 
 begin
 
     process(clk)
+        variable found_counter : boolean;
     begin
         if rising_edge(clk) then
             if reset = '1' then
-                state_reg           <= IDLE;
-                current_queue_reg   <= (others => '0');
-                current_valid_reg   <= '0';
-                current_is_pri_reg  <= '0';
-                request_next_reg    <= '0';
-                buzzer_reg          <= '0';
-                sec_count           <= 0;
+                deq_priority_r  <= '0';
+                deq_normal_r    <= '0';
+                assign_valid_r  <= (others => '0');
+                assign_ticket0_r <= (others => '0');
+                assign_ticket1_r <= (others => '0');
+                assign_ticket2_r <= (others => '0');
             else
-                request_next_reg <= '0';
+               
+                deq_priority_r <= '0';
+                deq_normal_r   <= '0';
+                assign_valid_r <= (others => '0');
 
-                case state_reg is
+                found_counter := false;
 
-                    when IDLE =>
-                        buzzer_reg <= '0';
-                        sec_count  <= 0;
+              
+                if priority_empty = '0' then --fist
 
-                        if counter_enable = '1' then
-                            request_next_reg <= '1';
-                            state_reg <= LOAD_QUEUE;
-                        end if;
+                    if (open_sw_clean(0) = '1' and counter_idle(0) = '1' and not found_counter) then
+                        assign_ticket0_r <= priority_front;
+                        assign_valid_r(0) <= '1';
+                        deq_priority_r <= '1';
+                        found_counter := true;
 
-                    when LOAD_QUEUE =>
-                        buzzer_reg <= '0';
-                        sec_count  <= 0;
+                    elsif (open_sw_clean(1) = '1' and counter_idle(1) = '1' and not found_counter) then
+                        assign_ticket1_r <= priority_front;
+                        assign_valid_r(1) <= '1';
+                        deq_priority_r <= '1';
+                        found_counter := true;
 
-                        if next_queue_valid = '1' then
-                            current_queue_reg  <= next_queue_in;
-                            current_valid_reg  <= '1';
-                            current_is_pri_reg <= next_queue_is_pri;
-                            state_reg          <= BUZZER_ON;
-                        
-                       
-                        end if;
+                    elsif (open_sw_clean(2) = '1' and counter_idle(2) = '1' and not found_counter) then
+                        assign_ticket2_r <= priority_front;
+                        assign_valid_r(2) <= '1';
+                        deq_priority_r <= '1';
+                        found_counter := true;
+                    end if;
 
-                    when BUZZER_ON =>
-                        buzzer_reg <= '1';
-                        if tick_1s = '1' then
-                            if sec_count = 1 then
-                                sec_count <= 0;
-                                buzzer_reg <= '0';
-                                state_reg <= WAIT_CUSTOMER_1;
-                            else
-                                sec_count <= sec_count + 1;
-                            end if;
-                        end if;
+        
+                elsif normal_empty = '0' then
 
-                    when WAIT_CUSTOMER_1 =>
-                        buzzer_reg <= '0';
+                    if (open_sw_clean(0) = '1' and counter_idle(0) = '1' and not found_counter) then
+                        assign_ticket0_r <= normal_front;
+                        assign_valid_r(0) <= '1';
+                        deq_normal_r <= '1';
+                        found_counter := true;
 
-                        if counter_enable = '0' then
-                            state_reg <= SERVING;
-                            sec_count <= 0;
-                        elsif skip_pulse = '1' then
-                            current_valid_reg <= '0';
-                            current_is_pri_reg <= '0';
-                            state_reg <= IDLE;
-                            sec_count <= 0;
-                        elsif tick_1s = '1' then
-                            if sec_count = 14 then
-                                sec_count <= 0;
-                                state_reg <= RECALL_BUZZER;
-                            else
-                                sec_count <= sec_count + 1;
-                            end if;
-                        end if;
+                    elsif (open_sw_clean(1) = '1' and counter_idle(1) = '1' and not found_counter) then
+                        assign_ticket1_r <= normal_front;
+                        assign_valid_r(1) <= '1';
+                        deq_normal_r <= '1';
+                        found_counter := true;
 
-                    when RECALL_BUZZER =>
-                        buzzer_reg <= '1';
-                        if tick_1s = '1' then
-                            if sec_count = 1 then
-                                sec_count <= 0;
-                                buzzer_reg <= '0';
-                                state_reg <= WAIT_CUSTOMER_2;
-                            else
-                                sec_count <= sec_count + 1;
-                            end if;
-                        end if;
+                    elsif (open_sw_clean(2) = '1' and counter_idle(2) = '1' and not found_counter) then
+                        assign_ticket2_r <= normal_front;
+                        assign_valid_r(2) <= '1';
+                        deq_normal_r <= '1';
+                        found_counter := true;
+                    end if;
 
-                    when WAIT_CUSTOMER_2 =>
-                        buzzer_reg <= '0';
-
-                        if counter_enable = '0' then
-                            state_reg <= SERVING;
-                            sec_count <= 0;
-                        elsif skip_pulse = '1' then
-                            current_valid_reg <= '0';
-                            current_is_pri_reg <= '0';
-                            state_reg <= IDLE;
-                            sec_count <= 0;
-                        elsif tick_1s = '1' then
-                            if sec_count = 14 then
-                                sec_count <= 0;
-                           
-                                state_reg <= WAIT_CUSTOMER_2;
-                            else
-                                sec_count <= sec_count + 1;
-                            end if;
-                        end if;
-
-                    when SERVING =>
-                        buzzer_reg <= '0';
-
-                        if service_done_sw = '1' then
-                            current_valid_reg  <= '0';
-                            current_is_pri_reg <= '0';
-                            state_reg          <= IDLE;
-                        end if;
-
-                    when others =>
-                        state_reg <= IDLE;
-
-                end case;
+                end if;
             end if;
         end if;
     end process;
 
-    current_queue      <= current_queue_reg;
-    current_valid      <= current_valid_reg;
-    current_is_pri     <= current_is_pri_reg;
+    deq_priority <= deq_priority_r;
+    deq_normal   <= deq_normal_r;
 
-    request_next_queue <= request_next_reg;
-    buzzer_out         <= buzzer_reg;
+    assign_valid <= assign_valid_r;
 
-    state_calling <= '1' when (state_reg = BUZZER_ON or state_reg = WAIT_CUSTOMER_1 or
-                               state_reg = RECALL_BUZZER or state_reg = WAIT_CUSTOMER_2)
-                     else '0';
-
-    state_serving <= '1' when state_reg = SERVING else '0';
+    assign_ticket0 <= assign_ticket0_r;
+    assign_ticket1 <= assign_ticket1_r;
+    assign_ticket2 <= assign_ticket2_r;
 
 end Behavioral;
